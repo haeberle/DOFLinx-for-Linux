@@ -1,11 +1,4 @@
 #!/bin/bash
-#
-# Changes applied for Batocera:
-# - If Batocera is detected, PLUGIN_PATH is forced to:
-#   /userdata/system/configs/mame/plugins
-# - This avoids installing into the read-only overlay filesystem.
-#
-
 # Run this script with this command
 # wget https://raw.githubusercontent.com/DOFLinx/DOFLinx-for-Linux/refs/heads/main/setup-doflinx.sh && chmod +x setup-doflinx.sh && ./setup-doflinx.sh  TODO delete these lines later
 # wget https://raw.githubusercontent.com/alinke/DOFLinx-for-Linux/refs/heads/main/setup-doflinx.sh && chmod +x setup-doflinx.sh && ./setup-doflinx.sh
@@ -43,15 +36,15 @@ INSTALLPATH="${HOME}/"
 commandLineArg=$1
 
 # If this is an existing installation then DOFLinx could already be running
-if test -f ${INSTALLPATH}doflinx/DOFLinx; then
+if test -f "${INSTALLPATH}doflinx/DOFLinx"; then
    echo "[INFO] Existing DOFLinx installation found"
    if pgrep -x "DOFLinx" > /dev/null; then
      echo -e "${green}[INFO]${nc} Stopping DOFLinx"
-     ${INSTALLPATH}doflinx/DOFLinxMsg QUIT
+     "${INSTALLPATH}doflinx/DOFLinxMsg" QUIT
   fi
 fi
 
-if ! test -f ${INSTALLPATH}pixelcade/pixelweb; then
+if ! test -f "${INSTALLPATH}pixelcade/pixelweb"; then
    echo -e "${green}[INFO]${nc} No Pixelcade installation can be seen at ${INSTALLPATH}pixelcade"
 fi
 
@@ -74,7 +67,7 @@ fi
 
 if uname -m | grep -q 'aarch32'; then
    echo -e "${yellow}aarch32 Detected...${nc}"
-   aarch32=arm_v7
+   machine_arch=arm_v7
 fi
 
 if uname -m | grep -q 'aarch64'; then
@@ -116,22 +109,22 @@ if test -f /proc/device-tree/model; then
    fi
 fi
 
-if [[ $machine_arch == "default" ]]; then
+if [[ -z "$machine_arch" ]]; then
   echo -e "${red}[ERROR] Your device platform WAS NOT Detected"
   echo -e "${yellow}[WARNING] Guessing that you are on x64 but be aware DOFLinx may not work${nc}"
   machine_arch=x64
 fi
 
-if [[ ! -d "${INSTALLPATH}doflinx" ]]; then
-   mkdir ${INSTALLPATH}doflinx
+if [[ ! -d "${INSTALLPATH}doflinx" ]]; then #create the doflinx folder if it's not there
+   mkdir -p "${INSTALLPATH}doflinx"
 fi
-if [[ ! -d "${INSTALLPATH}doflinx/temp" ]]; then
-   mkdir ${INSTALLPATH}doflinx/temp
+if [[ ! -d "${INSTALLPATH}doflinx/temp" ]]; then #create the doflinx/temp folder if it's not there
+   mkdir -p "${INSTALLPATH}doflinx/temp"
 fi
 
 echo -e "${cyan}[INFO]Installing DOFLinx Software...${nc}"
 
-cd ${INSTALLPATH}doflinx/temp
+cd "${INSTALLPATH}doflinx/temp" || exit 1
 
 doflinx_url=https://github.com/DOFLinx/DOFLinx-for-Linux/releases/download/doflinx/doflinx.zip
 wget -O "${INSTALLPATH}doflinx/temp/doflinx.zip" "$doflinx_url"
@@ -139,48 +132,53 @@ if [ $? -ne 0 ]; then
    echo -e "${red}[ERROR]${nc} Failed to download DOFLinx"
    install_successful=false
 else
-   unzip -o doflinx.zip -d ${INSTALLPATH}doflinx
+   unzip -o doflinx.zip -d "${INSTALLPATH}doflinx"
    if [ $? -ne 0 ]; then
       echo -e "${red}[ERROR]${nc} Failed to unzip DOFlinx"
       install_successful=false
    else
-      cp -f ${INSTALLPATH}doflinx/${machine_arch}/* ${INSTALLPATH}doflinx/
+      cp -f "${INSTALLPATH}doflinx/${machine_arch}/"* "${INSTALLPATH}doflinx/"
       if [ $? -ne 0 ]; then
          echo -e "${red}[ERROR]${nc} Failed to copy DOFLinx files"
          install_successful=false
       fi
 
-      PLUGIN_PATH=$(find / -name init.lua 2>/dev/null | grep hiscore| xargs dirname | xargs dirname | head -n 1)
-
+      # Batocera: use writable MAME plugin path under /userdata
       if batocera-info | grep -q 'System'; then
          PLUGIN_PATH="/userdata/system/configs/mame/plugins"
+      else
+         PLUGIN_PATH=$(find / -name init.lua 2>/dev/null | grep hiscore | xargs dirname | xargs dirname | head -n 1)
       fi
 
-      cp -f -r "${INSTALLPATH}doflinx/DOFLinx Mame Integration/doflinx" ${PLUGIN_PATH}/
-      if [ $? -ne 0 ]; then
-         echo -e "${yellow}[WARNING]${nc} Failed to copy DOFLinx plugin, will attempt via sudo"
-         sudo cp -f -r "${INSTALLPATH}doflinx/DOFLinx Mame Integration/doflinx" ${PLUGIN_PATH}/
+      if [[ -z "${PLUGIN_PATH}" ]]; then
+         echo -e "${red}[ERROR]${nc} Failed to determine MAME plugin path"
+         install_successful=false
+      else
+         mkdir -p "${PLUGIN_PATH}/doflinx"
+
+         cp -f -r "${INSTALLPATH}doflinx/DOFLinx Mame Integration/doflinx/"* "${PLUGIN_PATH}/doflinx/"
          if [ $? -ne 0 ]; then
-             echo -e "${red}[ERROR]${nc} Failed to copy DOFLinx plugin"
+            echo -e "${red}[ERROR]${nc} Failed to copy DOFLinx plugin"
+            install_successful=false
+         fi
+
+         cp -f "${INSTALLPATH}doflinx/DLSocket/${machine_arch}/DLSocket" "${PLUGIN_PATH}/doflinx/"
+         if [ $? -ne 0 ]; then
+             echo -e "${red}[ERROR]${nc} Failed to copy DLSocket to DOFLinx plugin directory"
              install_successful=false
          fi
-      fi
-      cp -f ${INSTALLPATH}doflinx/DLSocket/${machine_arch}/DLSocket ${PLUGIN_PATH}/doflinx/
-      if [ $? -ne 0 ]; then
-          echo -e "${yellow}[WARNING]${nc} Failed to copy DLSocket to DOFLinx plugin directory, will attempt via sudo"
-          sudo cp -f ${INSTALLPATH}doflinx/DLSocket/${machine_arch}/DLSocket ${PLUGIN_PATH}/doflinx/
-          if [ $? -ne 0 ]; then
-              echo -e "${red}[ERROR]${nc} Failed to copy DLSocket to DOFLinx plugin directory"
-              install_successful=false
-          fi
       fi
    fi
 fi
 
-chmod a+x ${INSTALLPATH}doflinx/DOFLinx
-chmod a+x ${INSTALLPATH}doflinx/DOFLinxMsg
+chmod a+x "${INSTALLPATH}doflinx/DOFLinx"
+chmod a+x "${INSTALLPATH}doflinx/DOFLinxMsg"
 
-sed -i -e "s|/home/arcade/|${INSTALLPATH}|g" ${INSTALLPATH}/doflinx/config/DOFLinx.ini
+if [[ -f "${PLUGIN_PATH}/doflinx/DLSocket" ]]; then
+   chmod a+x "${PLUGIN_PATH}/doflinx/DLSocket"
+fi
+
+sed -i -e "s|/home/arcade/|${INSTALLPATH}|g" "${INSTALLPATH}/doflinx/config/DOFLinx.ini"
 if [ $? -ne 0 ]; then
    echo -e "${red}[ERROR] Failed to edit DOFLinx.ini"
    install_successful=false
@@ -190,16 +188,16 @@ fi
 if batocera-info | grep -q 'System'; then
    echo -e "${green}[INFO]${nc}Batocera Detected"
    batocera_version="$(batocera-es-swissknife --version | cut -c1-2)" #get the version of Batocera as only Batocera V40 and above support services
-   if [[ $batocera_version -ge $batocera_40_plus_version ]]; then
-      if [[ ! -d ${INSTALLPATH}services ]]; then
-         mkdir ${INSTALLPATH}services
+   if [[ $batocera_version -ge $batocera_40_plus_version ]]; then #we need to add the service file and enable in services
+      if [[ ! -d ${INSTALLPATH}services ]]; then #does the ES scripts folder exist, make it if not
+         mkdir -p "${INSTALLPATH}services"
       fi
-      wget -O ${INSTALLPATH}services/doflinx https://raw.githubusercontent.com/DOFLinx/DOFLinx-for-Linux/main/batocera/doflinx
-      chmod +x ${INSTALLPATH}services/doflinx
+      wget -O "${INSTALLPATH}services/doflinx" https://raw.githubusercontent.com/DOFLinx/DOFLinx-for-Linux/main/batocera/doflinx
+      chmod +x "${INSTALLPATH}services/doflinx"
       sleep 1
       batocera-services enable doflinx 
       echo -e "${green}[INFO]${nc} DOFLinx added to Batocera services for Batocera V40 and up"
-   fi
+   fi # TODO add support for Batocera V39 and below and modify custom.sh
 else
   echo -e "${yellow}[ERROR]${nc} Not on Batocera, skipping Batocera setup..."
 fi
@@ -212,20 +210,20 @@ if [[ -f "$RETROPIE_AUTOSTART_FILE" ]]; then
   else
       echo -e "${green}[INFO]${nc}Adding DOFLinx to $RETROPIE_AUTOSTART_FILE"
       if grep -q "pixelweb" "$RETROPIE_AUTOSTART_FILE"; then
-          sudo sed -i '/pixelweb/a '"$RETROPIE_LINE_TO_ADD" "$RETROPIE_AUTOSTART_FILE" 
+          sed -i '/pixelweb/a '"$RETROPIE_LINE_TO_ADD" "$RETROPIE_AUTOSTART_FILE"  # insert DOFLinx after the pixelweb line
       else
-          echo "$RETROPIE_LINE_TO_ADD" | sudo tee -a "$RETROPIE_AUTOSTART_FILE" > /dev/null
+          echo "$RETROPIE_LINE_TO_ADD" >> "$RETROPIE_AUTOSTART_FILE"
       fi
       echo -e "${green}[INFO]${nc}DOFLinx added to RetroPie autostart"
   fi
-  sudo chmod +x "$RETROPIE_AUTOSTART_FILE"
+  chmod +x "$RETROPIE_AUTOSTART_FILE"
 else
   echo -e "${green}[INFO]${nc}Not on RetroPie, skipping RetroPie setup..."
 fi
 
 echo -e "${green}[INFO]${nc} Cleaning up"
-cd ${INSTALLPATH}
-rm -r ${INSTALLPATH}doflinx/temp
+cd "${INSTALLPATH}" || exit 1
+rm -rf "${INSTALLPATH}doflinx/temp"
 
 if [[ $install_successful == "true" ]]; then
    echo -e "${green}[INFO]${nc} DOFLinx Installed"
