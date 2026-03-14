@@ -1,4 +1,11 @@
 #!/bin/bash
+#
+# Changes applied for Batocera:
+# - If Batocera is detected, PLUGIN_PATH is forced to:
+#   /userdata/system/configs/mame/plugins
+# - This avoids installing into the read-only overlay filesystem.
+#
+
 # Run this script with this command
 # wget https://raw.githubusercontent.com/DOFLinx/DOFLinx-for-Linux/refs/heads/main/setup-doflinx.sh && chmod +x setup-doflinx.sh && ./setup-doflinx.sh  TODO delete these lines later
 # wget https://raw.githubusercontent.com/alinke/DOFLinx-for-Linux/refs/heads/main/setup-doflinx.sh && chmod +x setup-doflinx.sh && ./setup-doflinx.sh
@@ -115,10 +122,10 @@ if [[ $machine_arch == "default" ]]; then
   machine_arch=x64
 fi
 
-if [[ ! -d "${INSTALLPATH}doflinx" ]]; then #create the doflinx folder if it's not there
+if [[ ! -d "${INSTALLPATH}doflinx" ]]; then
    mkdir ${INSTALLPATH}doflinx
 fi
-if [[ ! -d "${INSTALLPATH}doflinx/temp" ]]; then #create the doflinx/temp folder if it's not there
+if [[ ! -d "${INSTALLPATH}doflinx/temp" ]]; then
    mkdir ${INSTALLPATH}doflinx/temp
 fi
 
@@ -142,7 +149,13 @@ else
          echo -e "${red}[ERROR]${nc} Failed to copy DOFLinx files"
          install_successful=false
       fi
+
       PLUGIN_PATH=$(find / -name init.lua 2>/dev/null | grep hiscore| xargs dirname | xargs dirname | head -n 1)
+
+      if batocera-info | grep -q 'System'; then
+         PLUGIN_PATH="/userdata/system/configs/mame/plugins"
+      fi
+
       cp -f -r "${INSTALLPATH}doflinx/DOFLinx Mame Integration/doflinx" ${PLUGIN_PATH}/
       if [ $? -ne 0 ]; then
          echo -e "${yellow}[WARNING]${nc} Failed to copy DOFLinx plugin, will attempt via sudo"
@@ -177,8 +190,8 @@ fi
 if batocera-info | grep -q 'System'; then
    echo -e "${green}[INFO]${nc}Batocera Detected"
    batocera_version="$(batocera-es-swissknife --version | cut -c1-2)" #get the version of Batocera as only Batocera V40 and above support services
-   if [[ $batocera_version -ge $batocera_40_plus_version ]]; then #we need to add the service file and enable in services
-      if [[ ! -d ${INSTALLPATH}services ]]; then #does the ES scripts folder exist, make it if not
+   if [[ $batocera_version -ge $batocera_40_plus_version ]]; then
+      if [[ ! -d ${INSTALLPATH}services ]]; then
          mkdir ${INSTALLPATH}services
       fi
       wget -O ${INSTALLPATH}services/doflinx https://raw.githubusercontent.com/DOFLinx/DOFLinx-for-Linux/main/batocera/doflinx
@@ -186,7 +199,7 @@ if batocera-info | grep -q 'System'; then
       sleep 1
       batocera-services enable doflinx 
       echo -e "${green}[INFO]${nc} DOFLinx added to Batocera services for Batocera V40 and up"
-   fi # TODO add support for Batocera V39 and below and modify custom.sh
+   fi
 else
   echo -e "${yellow}[ERROR]${nc} Not on Batocera, skipping Batocera setup..."
 fi
@@ -199,7 +212,7 @@ if [[ -f "$RETROPIE_AUTOSTART_FILE" ]]; then
   else
       echo -e "${green}[INFO]${nc}Adding DOFLinx to $RETROPIE_AUTOSTART_FILE"
       if grep -q "pixelweb" "$RETROPIE_AUTOSTART_FILE"; then
-          sudo sed -i '/pixelweb/a '"$RETROPIE_LINE_TO_ADD" "$RETROPIE_AUTOSTART_FILE"  # insert DOFLinx after the pixelweb line
+          sudo sed -i '/pixelweb/a '"$RETROPIE_LINE_TO_ADD" "$RETROPIE_AUTOSTART_FILE" 
       else
           echo "$RETROPIE_LINE_TO_ADD" | sudo tee -a "$RETROPIE_AUTOSTART_FILE" > /dev/null
       fi
